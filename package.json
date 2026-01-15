@@ -1,0 +1,25 @@
+{
+  "name": "solana-event-indexer",
+  "version": "1.0.0",
+  "description": "Solana Event Indexer Service",
+  "main": "src/index.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/index.ts",
+    "dev": "ts-node src/index.ts"
+  },
+  "keywords": ["solana", "indexer", "blockchain"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/mongoose": "^5.11.96",
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.0.4"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.87.6",
+    "dotenv": "^16.0.3",
+    "mongoose": "^9.1.3"
+  }
+}
