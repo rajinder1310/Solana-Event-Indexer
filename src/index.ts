@@ -1,6 +1,10 @@
 
 import { config } from './config';
+import { IndexerService } from './services/indexer';
 import mongoose from 'mongoose';
+
+// Initialize the IndexerService with the global configuration
+const indexer = new IndexerService(config);
 
 /**
  * Main entry point for the Solana Event Indexer
@@ -22,12 +26,13 @@ async function main() {
       console.log(`   ${index + 1}. ${program.name} (${program.programId})`);
     });
 
-    // 3. TODO: Initialize and start IndexerService
-    console.log('\n⏳ Indexer service initialization coming next...');
+    // 3. Start the Indexer Service (runs all program indexers)
+    await indexer.start();
 
     // Graceful shutdown handlers
     process.on('SIGINT', async () => {
       console.log('\n\n🛑 Received SIGINT, shutting down gracefully...');
+      indexer.stop();
       await mongoose.connection.close();
       console.log('✅ MongoDB connection closed');
       process.exit(0);
@@ -35,6 +40,7 @@ async function main() {
 
     process.on('SIGTERM', async () => {
       console.log('\n\n🛑 Received SIGTERM, shutting down gracefully...');
+      indexer.stop();
       await mongoose.connection.close();
       console.log('✅ MongoDB connection closed');
       process.exit(0);
