@@ -34,7 +34,7 @@ export class RealtimeIndexer extends BaseIndexer {
       // Use 'mentions' filter to capture any transaction involving this address
       // This works for Programs (execution), Mints (transfers), and Wallets
       this.wsSubscriptionId = this.connection.onLogs(
-        { mentions: [this.programId.toString()] } as any,
+        this.programId,
         async (logs, ctx) => {
           if (!this.isRunning) return;
 
