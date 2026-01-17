@@ -4,12 +4,13 @@ A robust and scalable TypeScript service designed to index and process transacti
 
 ## 🚀 Features
 
-*   **Historical Indexing**: Fetches transaction signatures for specific Solana programs using `getSignaturesForAddress`
-*   **Auto-Resume**: Automatically picks up from the last indexed slot after a restart, ensuring no data is lost
-*   **Commitment Level**: Uses `confirmed` commitment to avoid data inconsistencies
-*   **Adaptive Batching**: Dynamically adjusts batch sizes based on network performance (coming soon)
-*   **Duplicate Prevention**: Handles duplicate transactions gracefully using compound unique indexes
-*   **Prefetching**: Optimizes performance by pre-fetching signatures (coming soon)
+*   **Dual Indexing Strategy**:
+    *   **Historical Indexing**: Uses a continuous polling loop to fetch past transaction signatures using `getSignaturesForAddress`.
+    *   **Realtime Indexing**: Establishes a WebSocket connection to the Solana RPC node (`onLogs`) to listen for new events instantly.
+*   **Auto-Resume**: Automatically picks up from the last indexed slot after a restart, ensuring no data is lost.
+*   **Commitment Level**: Uses `confirmed` commitment to avoid data inconsistencies.
+*   **Adaptive Batching**: Dynamically adjusts batch sizes based on network performance.
+*   **Duplicate Prevention**: Handles duplicate transactions gracefully using compound unique indexes.
 
 ## 🛠 Prerequisites
 
@@ -36,31 +37,35 @@ Before running this project, ensure you have the following installed:
     ```bash
     cp .env.example .env
     ```
-    Open `.env` and set your MongoDB URI:
+    Open `.env` and configure your MongoDB URI and Solana RPC endpoints.
+
+    **For Devnet (Public/Free):**
     ```env
     MONGO_URI=mongodb://localhost:27017/solana_indexer
-    # RPC_URL=https://api.devnet.solana.com (Optional default)
+    RPC_URL=https://api.devnet.solana.com
+    WS_URL=wss://api.devnet.solana.com
     ```
+
+    **For Mainnet (Recommended):**
+    Use a dedicated RPC provider like Helius, QuickNode, or Alchemy to avoid rate limits.
 
 ## ⚙️ Configuration
 
-The service is configured via `src/config.ts`. You can add or modify program configurations in the `programs` array.
+The service is configured via `src/config/programs.ts`. You can add or modify program configurations in the `programs` array.
 
 **Example Program Config:**
 ```typescript
 {
-  programId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', // Solana Token Program
-  name: 'solana-token-program',
-  rpcUrl: 'https://api.devnet.solana.com',
-  startSlot: 0,
-  maxSignaturesPerRequest: 100
+  id: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU', // Target Program ID
+  name: 'user-contract',
+  startSlot: 0
 }
 ```
 
 ## ▶️ Usage
 
 ### Development Mode
-Run the service with hot-reloading (uses `ts-node`):
+Run the service with hot-reloading:
 ```bash
 npm run dev
 ```
@@ -74,34 +79,31 @@ npm start
 
 ## 📂 Project Structure
 
-*   `src/index.ts`: Entry point of the application. Connects to DB and starts the indexer.
-*   `src/services/` (coming soon): Core logic for indexing programs
-*   `src/config.ts`: Configuration for Solana programs and database
-*   `src/models/Transaction.ts`: Mongoose schema for storing indexed transactions
-*   `src/types/index.ts`: TypeScript type definitions
+*   `src/app.ts`: Entry point. Connects to DB and starts the indexer services.
+*   `src/core/indexer/`:
+    *   `historical.ts`: Handles backfilling past data using a polling loop.
+    *   `realtime.ts`: Handles listening to new events via WebSocket.
+*   `src/core/parsers/`: Logic to parse raw transaction data into usage formats.
+*   `src/db/`: Database connection and Mongoose repositories.
 
 ## 📊 Database Schema
 
 ### Transaction Collection
-
 Each transaction is stored with the following fields:
 
 - `programId`: Solana program address involved in the transaction
 - `signature`: Unique transaction signature
 - `slot`: Slot number when transaction was processed
 - `blockTime`: Unix timestamp of block
-- `instructions`: Array of transaction instructions
+- `instructions`: Array of parsed instructions
 - `logs`: Transaction logs
 - `createdAt`: Timestamp when record was created
 
 **Indexes:**
-- Compound unique index on `(programId, signature)` - prevents duplicates
-- Compound index on `(programId, slot)` - optimizes resume queries
+- Compound unique index on `(programId, signature)` - prevents duplicates.
 
 ## 🤝 Contributing
-
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## 📄 License
-
 This project is licensed under the ISC License.
