@@ -1,3 +1,8 @@
+/**
+ * @file RealtimeIndexer implementation for Solana Event Indexer.
+ * This class establishes a WebSocket connection to listen for logs related to a
+ * specific program and processes transactions in real‑time.
+ */
 
 import { Connection, PublicKey, ParsedTransactionWithMeta } from '@solana/web3.js';
 import { BaseIndexer } from './base';
@@ -7,11 +12,22 @@ import { logger } from '../../utils/logger';
 import { TransactionParser } from '../parsers/transaction';
 import { withRetry, sleep } from '../../utils/retry';
 
+/**
+ * RealtimeIndexer subscribes to Solana logs via WebSocket and indexes
+ * transactions as they occur.
+ */
 export class RealtimeIndexer extends BaseIndexer {
+  /** Solana RPC connection */
   private connection: Connection;
+  /** Subscription ID returned by `onLogs` */
   private wsSubscriptionId: number | null = null;
+  /** PublicKey of the program being indexed */
   private programId: PublicKey;
 
+  /**
+   * Initialise the indexer for a given program definition.
+   * @param program Program configuration containing ID and indexing flags.
+   */
   constructor(program: ProgramDefinition) {
     super(program);
     this.programId = new PublicKey(program.id);
@@ -21,6 +37,9 @@ export class RealtimeIndexer extends BaseIndexer {
     });
   }
 
+  /**
+   * Start the realtime indexing process. Sets up the WebSocket subscription.
+   */
   async start(): Promise<void> {
     if (this.isRunning) return;
     this.isRunning = true;
@@ -29,6 +48,10 @@ export class RealtimeIndexer extends BaseIndexer {
     this.subscribeToLogs();
   }
 
+  /**
+   * Subscribe to logs for the program using the `mentions` filter.
+   * Handles reconnection logic and unsupported filter errors.
+   */
   private async subscribeToLogs() {
     try {
       // Use 'mentions' filter to capture any transaction involving this address
@@ -66,6 +89,10 @@ export class RealtimeIndexer extends BaseIndexer {
     }
   }
 
+  /**
+   * Process a single transaction identified by its signature.
+   * @param signature Transaction signature to fetch and index.
+   */
   private async processTransaction(signature: string) {
     // Check if we already have it (debounce)
     const exists = await this.repository.filterExistingSignatures(this.program.id, [signature]);
@@ -87,15 +114,20 @@ export class RealtimeIndexer extends BaseIndexer {
 
     const parsedData = TransactionParser.parse(signature, tx, this.program.id);
 
-    await this.repository.saveBatch([{
-      ...parsedData,
-      programId: this.program.id,
-      source: 'realtime'
-    }]);
+    await this.repository.saveBatch([
+      {
+        ...parsedData,
+        programId: this.program.id,
+        source: 'realtime'
+      }
+    ]);
 
     logger.info(`[${this.program.name}] ✅ Indexed realtime tx: ${signature} (Slot: ${parsedData.slot})`);
   }
 
+  /**
+   * Stop the realtime indexer and clean up the WebSocket subscription.
+   */
   stop(): void {
     super.stop();
     if (this.wsSubscriptionId !== null) {

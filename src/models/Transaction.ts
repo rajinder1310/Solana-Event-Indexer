@@ -1,34 +1,42 @@
 
+/**
+ * @file Transaction model definition for Solana Event Indexer.
+ * This file defines the Mongoose schema and TypeScript interface used to store
+ * transaction data extracted from the Solana blockchain.
+ */
+
 import mongoose, { Schema, Document } from 'mongoose';
 
 /**
- * MongoDB document interface for Solana transactions
+ * MongoDB document interface for Solana transactions.
+ * Extends Mongoose's Document to include transaction fields.
  */
 export interface ITransaction extends Document {
   /** Solana program ID that was involved in this transaction */
   programId: string;
 
-  /** Unique transaction signature */
+  /** Unique transaction signature (hash) */
   signature: string;
 
   /** Slot number when transaction was processed */
   slot: number;
 
-  /** Unix timestamp of the block */
+  /** Unix timestamp of the block (null if unavailable) */
   blockTime: number | null;
 
-  /** Transaction instructions data */
+  /** Transaction instructions data (raw) */
   instructions: any[];
 
-  /** Transaction logs */
+  /** Transaction logs emitted by the runtime (null if none) */
   logs: string[] | null;
 
-  /** When this record was created in our database */
+  /** Timestamp when this record was created in our database */
   createdAt: Date;
 }
 
 /**
- * Mongoose schema for Solana transactions
+ * Mongoose schema for Solana transactions.
+ * Defines field types, required constraints, and indexes for efficient queries.
  */
 const TransactionSchema: Schema = new Schema({
   programId: { type: String, required: true, index: true },
@@ -40,10 +48,13 @@ const TransactionSchema: Schema = new Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-// Compound unique index to prevent duplicate transactions
+// Unique compound index to prevent duplicate transaction entries
 TransactionSchema.index({ programId: 1, signature: 1 }, { unique: true });
 
-// Compound index for efficient "last indexed slot" queries
+// Index to support fast retrieval of the latest indexed slot per program
 TransactionSchema.index({ programId: 1, slot: -1 });
 
+/**
+ * Export the Mongoose model for use throughout the application.
+ */
 export const TransactionModel = mongoose.model<ITransaction>('Transaction', TransactionSchema);

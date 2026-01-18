@@ -1,8 +1,15 @@
+/**
+ * @file Logger Utility
+ * Configures and exports a Winston logger instance for application-wide logging.
+ */
 
 import winston from 'winston';
-import path from 'path';
 
-// Define log levels
+/**
+ * Log levels definition.
+ * 0: error (highest priority)
+ * 4: debug (lowest priority)
+ */
 const levels = {
   error: 0,
   warn: 1,
@@ -11,7 +18,9 @@ const levels = {
   debug: 4,
 };
 
-// Define colors for each level
+/**
+ * Color configuration for each log level.
+ */
 const colors = {
   error: 'red',
   warn: 'yellow',
@@ -23,7 +32,10 @@ const colors = {
 // Tell winston that you want to link the colors
 winston.addColors(colors);
 
-// Chose the aspect of your log customizing the log format.
+/**
+ * Custom log format combinator.
+ * Includes timestamp, colorization, and a specific print format.
+ */
 const format = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss:ms' }),
   winston.format.colorize({ all: true }),
@@ -32,12 +44,18 @@ const format = winston.format.combine(
   ),
 );
 
-// Define which transports the logger must use to print out messages.
+/**
+ * Transports definition.
+ * Currently only logs to the Console.
+ */
 const transports = [
-  // Allow the use the console to print the messages
   new winston.transports.Console(),
 ];
 
+/**
+ * Configured Winston logger instance.
+ * Reads LOG_LEVEL from environment variables, defaults to 'info'.
+ */
 export const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
   levels,
@@ -45,6 +63,12 @@ export const logger = winston.createLogger({
   transports,
 });
 
+/**
+ * Helper function to log messages with a standardized program prefix.
+ * @param programName Name of the program (e.g., 'token-program')
+ * @param message The message to log
+ * @param level Log level (default: 'info')
+ */
 export const logProgram = (programName: string, message: string, level: string = 'info') => {
   logger.log(level, `[${programName}] ${message}`);
 };

@@ -1,3 +1,8 @@
+/**
+ * @file HistoricalIndexer implementation for Solana Event Indexer.
+ * This class handles the backfilling of historical transaction data by polling
+ * the Solana RPC for past signatures and processing them sequentially.
+ */
 
 import { Connection, PublicKey, ConfirmedSignatureInfo } from '@solana/web3.js';
 import { BaseIndexer } from './base';
@@ -7,11 +12,22 @@ import { logger } from '../../utils/logger';
 import { TransactionParser } from '../parsers/transaction';
 import { withRetry, sleep } from '../../utils/retry';
 
+/**
+ * HistoricalIndexer polls for historical transaction signatures and indexes them.
+ * It supports auto-resume from the last indexed slot and handles pagination backwards in time.
+ */
 export class HistoricalIndexer extends BaseIndexer {
+  /** Connection to the Solana RPC node */
   private connection: Connection;
+  /** The public key of the program being indexed */
   private programId: PublicKey;
+  /** The current slot used for reference (though indexing often goes by signature) */
   private currentSlot: number;
 
+  /**
+   * Initialize the historical indexer.
+   * @param program The program configuration definition.
+   */
   constructor(program: ProgramDefinition) {
     super(program);
     this.programId = new PublicKey(program.id);
@@ -19,11 +35,15 @@ export class HistoricalIndexer extends BaseIndexer {
     this.currentSlot = program.startSlot || 0;
   }
 
+  /**
+   * Start the historical backfilling process.
+   * Checks for the last indexed slot to determine where to resume or start.
+   */
   async start(): Promise<void> {
     if (this.isRunning) return;
     this.isRunning = true;
 
-    // Auto-resume
+    // Auto-resume logic: check DB for last indexed slot
     const lastSlot = await this.repository.getLastIndexedSlot(this.program.id);
     if (lastSlot && lastSlot > this.currentSlot) {
       this.currentSlot = lastSlot;
@@ -32,15 +52,21 @@ export class HistoricalIndexer extends BaseIndexer {
       logger.info(`[${this.program.name}] 📜 Starting fresh backfill from slot ${this.currentSlot}`);
     }
 
+    // Start the main polling loop
     this.loop();
   }
 
+  /**
+   * The main loop that fetches signatures and processes them.
+   * Uses `before` parameter for pagination (fetching older transactions).
+   */
   private async loop() {
     let beforeSignature: string | undefined = undefined;
     let batchSize = config.batchSize;
 
     while (this.isRunning) {
       try {
+        // Fetch signatures for the address
         const signatures = await withRetry(async () => {
           return await this.connection.getSignaturesForAddress(
             this.programId,
@@ -51,14 +77,15 @@ export class HistoricalIndexer extends BaseIndexer {
 
         if (signatures.length === 0) {
           logger.info(`[${this.program.name}] 🏁 No more historical signatures found. Backfill complete? Waiting...`);
+          // Wait longer if we think we're done, then try again (in case of new activity or deep history)
           await sleep(config.pollInterval * 5);
-          beforeSignature = undefined; // Reset to check for new
+          beforeSignature = undefined; // Reset to check from the top (newest) again or consider stop logic
           continue;
         }
 
         logger.info(`[${this.program.name}] 📥 Fetched ${signatures.length} historical signatures`);
 
-        // Filter out already indexed
+        // Filter out signatures that have already been indexed in the database
         const sigStrings = signatures.map(s => s.signature);
         const newSignatures = await this.repository.filterExistingSignatures(this.program.id, sigStrings);
 
@@ -68,26 +95,30 @@ export class HistoricalIndexer extends BaseIndexer {
           logger.debug(`[${this.program.name}] All ${signatures.length} signatures already indexed.`);
         }
 
-        // Pagination: prepare for next batch (moved backwards in time usually, but depends on requirement)
-        // NOTE: getSignaturesForAddress goes backwards by default (newest first).
-        // For distinct backfill (gap filling), approach might differ.
-        // Assuming simplistic approach: walking backwards via 'before'.
-
+        // Pagination: prepare for the next batch.
+        // getSignaturesForAddress returns newest first. To go back in time, we use the last signature as 'before'.
         beforeSignature = signatures[signatures.length - 1].signature;
 
-        // Adaptive batching
+        // Adaptive batching: increase batch size if successful, up to max
         if (batchSize < config.maxBatchSize) batchSize = Math.min(batchSize * 2, config.maxBatchSize);
 
         await sleep(config.pollInterval);
 
       } catch (error: any) {
         logger.error(`[${this.program.name}] Backfill loop error: ${error.message}`);
+        // Reduce batch size on error (congestion, rate limits)
         if (batchSize > config.minBatchSize) batchSize = Math.floor(batchSize / 2);
         await sleep(5000);
       }
     }
   }
 
+  /**
+   * Process a batch of signatures by fetching their transaction details and saving them to the DB.
+   * Handles "413 Payload Too Large" errors by recursively splitting the batch.
+   *
+   * @param signatures Array of transaction signatures to process.
+   */
   private async processBatch(signatures: string[]) {
     logger.info(`[${this.program.name}] ⚙️ Processing batch of ${signatures.length} transactions...`);
 
@@ -96,6 +127,7 @@ export class HistoricalIndexer extends BaseIndexer {
       if (sigs.length === 0) return;
 
       try {
+        // Fetch parsed transactions from RPC
         const txs = await withRetry(async () => {
           return await this.connection.getParsedTransactions(sigs, {
             maxSupportedTransactionVersion: 0,
@@ -112,6 +144,7 @@ export class HistoricalIndexer extends BaseIndexer {
           if (!tx) continue;
 
           try {
+            // Parse and normalize the transaction data
             const data = TransactionParser.parse(sigs[i], tx, this.program.id);
             parsedTxs.push({
               ...data,
@@ -130,7 +163,7 @@ export class HistoricalIndexer extends BaseIndexer {
         }
 
       } catch (error: any) {
-        // Handle 413 Payload Too Large by splitting the batch
+        // Handle 413 Payload Too Large by splitting the batch into smaller chunks
         if (error?.message?.includes('413') || error?.toString().includes('Payload Too Large')) {
           if (sigs.length <= 1) {
             logger.error(`[${this.program.name}] ❌ Skipping tx ${sigs[0]} due to 413 even with single item.`);
